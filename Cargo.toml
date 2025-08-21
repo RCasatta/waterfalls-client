@@ -7,8 +7,8 @@ authors = [
     "Riccardo Casatta <riccardo@casatta.it>",
 ]
 license = "MIT"
-homepage = "https://github.com/bitcoindevkit/rust-waterfalls-client"
-repository = "https://github.com/bitcoindevkit/rust-waterfalls-client"
+homepage = "https://github.com/RCasatta/waterfalls-client"
+repository = "https://github.com/RCasatta/waterfalls-client"
 documentation = "https://docs.rs/waterfalls-client/"
 description = "Waterfalls API client library. Supports plaintext, TLS and Onion servers. Blocking or async"
 keywords = ["bitcoin", "waterfalls"]
