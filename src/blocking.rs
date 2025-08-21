@@ -9,7 +9,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-//! Esplora by way of `minreq` HTTP client.
+//! Waterfalls by way of `minreq` HTTP client.
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -37,13 +37,13 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct BlockingClient {
-    /// The URL of the Esplora server.
+    /// The URL of the Waterfalls server.
     url: String,
     /// The proxy is ignored when targeting `wasm32`.
     pub proxy: Option<String>,
     /// Socket timeout.
     pub timeout: Option<u64>,
-    /// HTTP headers to set on every request made to Esplora server
+    /// HTTP headers to set on every request made to Waterfalls server
     pub headers: HashMap<String, String>,
     /// Number of times to retry a request
     pub max_retries: usize,
@@ -266,7 +266,7 @@ impl BlockingClient {
         self.get_opt_response_json(&format!("/tx/{txid}/outspend/{index}"))
     }
 
-    /// Broadcast a [`Transaction`] to Esplora
+    /// Broadcast a [`Transaction`] to Waterfalls
     pub fn broadcast(&self, transaction: &Transaction) -> Result<(), Error> {
         let mut request = minreq::post(format!("{}/tx", self.url)).with_body(
             serialize(transaction)
@@ -364,7 +364,7 @@ impl BlockingClient {
     /// provided.
     ///
     /// The maximum number of summaries returned depends on the backend itself:
-    /// esplora returns `10` while [mempool.space](https://mempool.space/docs/api) returns `15`.
+    /// waterfalls returns `10` while [mempool.space](https://mempool.space/docs/api) returns `15`.
     pub fn get_blocks(&self, height: Option<u32>) -> Result<Vec<BlockSummary>, Error> {
         let path = match height {
             Some(height) => format!("/blocks/{height}"),

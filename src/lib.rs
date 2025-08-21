@@ -1,11 +1,11 @@
-//! An extensible blocking/async Esplora client
+//! An extensible blocking/async Waterfalls client
 //!
 //! This library provides an extensible blocking and
-//! async Esplora client to query Esplora's backend.
+//! async Waterfalls client to query Waterfalls's backend.
 //!
 //! The library provides the possibility to build a blocking
 //! client using [`minreq`] and an async client using [`reqwest`].
-//! The library supports communicating to Esplora via a proxy
+//! The library supports communicating to Waterfalls via a proxy
 //! and also using TLS (SSL) for secure communication.
 //!
 //!
@@ -16,10 +16,10 @@
 //! ```no_run
 //! # #[cfg(feature = "blocking")]
 //! # {
-//! use esplora_client::Builder;
+//! use waterfalls_client::Builder;
 //! let builder = Builder::new("https://blockstream.info/testnet/api");
 //! let blocking_client = builder.build_blocking();
-//! # Ok::<(), esplora_client::Error>(());
+//! # Ok::<(), waterfalls_client::Error>(());
 //! # }
 //! ```
 //!
@@ -28,10 +28,10 @@
 //! ```no_run
 //! # #[cfg(all(feature = "async", feature = "tokio"))]
 //! # {
-//! use esplora_client::Builder;
+//! use waterfalls_client::Builder;
 //! let builder = Builder::new("https://blockstream.info/testnet/api");
 //! let async_client = builder.build_async();
-//! # Ok::<(), esplora_client::Error>(());
+//! # Ok::<(), waterfalls_client::Error>(());
 //! # }
 //! ```
 //!
@@ -41,7 +41,7 @@
 //! specific features, set `default-features` to `false` in your `Cargo.toml`
 //! and specify the features you want. This will look like this:
 //!
-//! `esplora-client = { version = "*", default-features = false, features =
+//! `waterfalls-client = { version = "*", default-features = false, features =
 //! ["blocking"] }`
 //!
 //! * `blocking` enables [`minreq`], the blocking client with proxy.
@@ -117,9 +117,9 @@ pub fn convert_fee_rate(target: usize, estimates: HashMap<u16, f64>) -> Option<f
 
 #[derive(Debug, Clone)]
 pub struct Builder {
-    /// The URL of the Esplora server.
+    /// The URL of the Waterfalls server.
     pub base_url: String,
-    /// Optional URL of the proxy to use to make requests to the Esplora server
+    /// Optional URL of the proxy to use to make requests to the Waterfalls server
     ///
     /// The string should be formatted as:
     /// `<protocol>://<user>:<password>@host:<port>`.
@@ -134,7 +134,7 @@ pub struct Builder {
     pub proxy: Option<String>,
     /// Socket timeout.
     pub timeout: Option<u64>,
-    /// HTTP headers to set on every request made to Esplora server.
+    /// HTTP headers to set on every request made to Waterfalls server.
     pub headers: HashMap<String, String>,
     /// Max retries
     pub max_retries: usize,
@@ -197,7 +197,7 @@ impl Builder {
     }
 }
 
-/// Errors that can happen during a request to `Esplora` servers.
+/// Errors that can happen during a request to `Waterfalls` servers.
 #[derive(Debug)]
 pub enum Error {
     /// Error during `minreq` HTTP request
@@ -321,16 +321,16 @@ mod test {
             })
             .await;
 
-        let esplora_url = ELECTRSD.esplora_url.as_ref().unwrap();
+        let waterfalls_url = ELECTRSD.esplora_url.as_ref().unwrap();
 
-        let mut builder = Builder::new(&format!("http://{esplora_url}"));
+        let mut builder = Builder::new(&format!("http://{waterfalls_url}"));
         if !headers.is_empty() {
             builder.headers = headers;
         }
 
         let blocking_client = builder.build_blocking();
 
-        let builder_async = Builder::new(&format!("http://{esplora_url}"));
+        let builder_async = Builder::new(&format!("http://{waterfalls_url}"));
 
         #[cfg(feature = "tokio")]
         let async_client = builder_async.build_async().unwrap();
@@ -393,7 +393,7 @@ mod test {
 
     #[test]
     fn feerate_parsing() {
-        let esplora_fees = serde_json::from_str::<HashMap<u16, f64>>(
+        let waterfalls_fees = serde_json::from_str::<HashMap<u16, f64>>(
             r#"{
   "25": 1.015,
   "5": 2.3280000000000003,
@@ -428,14 +428,14 @@ mod test {
         )
         .unwrap();
         assert!(convert_fee_rate(1, HashMap::new()).is_none());
-        assert_eq!(convert_fee_rate(6, esplora_fees.clone()).unwrap(), 2.236);
+        assert_eq!(convert_fee_rate(6, waterfalls_fees.clone()).unwrap(), 2.236);
         assert_eq!(
-            convert_fee_rate(26, esplora_fees.clone()).unwrap(),
+            convert_fee_rate(26, waterfalls_fees.clone()).unwrap(),
             1.015,
             "should inherit from value for 25"
         );
         assert!(
-            convert_fee_rate(0, esplora_fees).is_none(),
+            convert_fee_rate(0, waterfalls_fees).is_none(),
             "should not return feerate for 0 target"
         );
     }
@@ -631,7 +631,7 @@ mod test {
     #[cfg(all(feature = "blocking", feature = "async"))]
     #[tokio::test]
     async fn test_get_non_existing_block_status() {
-        // Esplora returns the same status for orphaned blocks as for non-existing
+        // Waterfalls returns the same status for orphaned blocks as for non-existing
         // blocks: non-existing: https://blockstream.info/api/block/0000000000000000000000000000000000000000000000000000000000000000/status
         // orphaned: https://blockstream.info/api/block/000000000000000000181b1a2354620f66868a723c0c4d5b24e4be8bdfc35a7f/status
         // (Here the block is cited as orphaned: https://bitcoinchain.com/block_explorer/block/000000000000000000181b1a2354620f66868a723c0c4d5b24e4be8bdfc35a7f/ )

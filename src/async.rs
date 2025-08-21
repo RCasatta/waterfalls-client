@@ -9,7 +9,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-//! Esplora by way of `reqwest` HTTP client.
+//! Waterfalls by way of `reqwest` HTTP client.
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -36,7 +36,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct AsyncClient<S = DefaultSleeper> {
-    /// The URL of the Esplora Server.
+    /// The URL of the Waterfalls Server.
     url: String,
     /// The inner [`reqwest::Client`] to make HTTP requests.
     client: Client,
@@ -94,7 +94,7 @@ impl<S: Sleeper> AsyncClient<S> {
     /// Make an HTTP GET request to given URL, deserializing to any `T` that
     /// implement [`bitcoin::consensus::Decodable`].
     ///
-    /// It should be used when requesting Esplora endpoints that can be directly
+    /// It should be used when requesting Waterfalls endpoints that can be directly
     /// deserialized to native `rust-bitcoin` types, which implements
     /// [`bitcoin::consensus::Decodable`] from `&[u8]`.
     ///
@@ -118,9 +118,9 @@ impl<S: Sleeper> AsyncClient<S> {
 
     /// Make an HTTP GET request to given URL, deserializing to `Option<T>`.
     ///
-    /// It uses [`AsyncEsploraClient::get_response`] internally.
+    /// It uses [`AsyncWaterfallsClient::get_response`] internally.
     ///
-    /// See [`AsyncEsploraClient::get_response`] above for full documentation.
+    /// See [`AsyncWaterfallsClient::get_response`] above for full documentation.
     async fn get_opt_response<T: Decodable>(&self, path: &str) -> Result<Option<T>, Error> {
         match self.get_response::<T>(path).await {
             Ok(res) => Ok(Some(res)),
@@ -132,7 +132,7 @@ impl<S: Sleeper> AsyncClient<S> {
     /// Make an HTTP GET request to given URL, deserializing to any `T` that
     /// implements [`serde::de::DeserializeOwned`].
     ///
-    /// It should be used when requesting Esplora endpoints that have a specific
+    /// It should be used when requesting Waterfalls endpoints that have a specific
     /// defined API, mostly defined in [`crate::api`].
     ///
     /// # Errors
@@ -158,9 +158,9 @@ impl<S: Sleeper> AsyncClient<S> {
 
     /// Make an HTTP GET request to given URL, deserializing to `Option<T>`.
     ///
-    /// It uses [`AsyncEsploraClient::get_response_json`] internally.
+    /// It uses [`AsyncWaterfallsClient::get_response_json`] internally.
     ///
-    /// See [`AsyncEsploraClient::get_response_json`] above for full
+    /// See [`AsyncWaterfallsClient::get_response_json`] above for full
     /// documentation.
     async fn get_opt_response_json<T: serde::de::DeserializeOwned>(
         &self,
@@ -176,7 +176,7 @@ impl<S: Sleeper> AsyncClient<S> {
     /// Make an HTTP GET request to given URL, deserializing to any `T` that
     /// implements [`bitcoin::consensus::Decodable`].
     ///
-    /// It should be used when requesting Esplora endpoints that are expected
+    /// It should be used when requesting Waterfalls endpoints that are expected
     /// to return a hex string decodable to native `rust-bitcoin` types which
     /// implement [`bitcoin::consensus::Decodable`] from `&[u8]`.
     ///
@@ -201,9 +201,9 @@ impl<S: Sleeper> AsyncClient<S> {
 
     /// Make an HTTP GET request to given URL, deserializing to `Option<T>`.
     ///
-    /// It uses [`AsyncEsploraClient::get_response_hex`] internally.
+    /// It uses [`AsyncWaterfallsClient::get_response_hex`] internally.
     ///
-    /// See [`AsyncEsploraClient::get_response_hex`] above for full
+    /// See [`AsyncWaterfallsClient::get_response_hex`] above for full
     /// documentation.
     async fn get_opt_response_hex<T: Decodable>(&self, path: &str) -> Result<Option<T>, Error> {
         match self.get_response_hex(path).await {
@@ -215,7 +215,7 @@ impl<S: Sleeper> AsyncClient<S> {
 
     /// Make an HTTP GET request to given URL, deserializing to `String`.
     ///
-    /// It should be used when requesting Esplora endpoints that can return
+    /// It should be used when requesting Waterfalls endpoints that can return
     /// `String` formatted data that can be parsed downstream.
     ///
     /// # Errors
@@ -237,9 +237,9 @@ impl<S: Sleeper> AsyncClient<S> {
 
     /// Make an HTTP GET request to given URL, deserializing to `Option<T>`.
     ///
-    /// It uses [`AsyncEsploraClient::get_response_text`] internally.
+    /// It uses [`AsyncWaterfallsClient::get_response_text`] internally.
     ///
-    /// See [`AsyncEsploraClient::get_response_text`] above for full
+    /// See [`AsyncWaterfallsClient::get_response_text`] above for full
     /// documentation.
     async fn get_opt_response_text(&self, path: &str) -> Result<Option<String>, Error> {
         match self.get_response_text(path).await {
@@ -252,7 +252,7 @@ impl<S: Sleeper> AsyncClient<S> {
     /// Make an HTTP POST request to given URL, serializing from any `T` that
     /// implement [`bitcoin::consensus::Encodable`].
     ///
-    /// It should be used when requesting Esplora endpoints that expected a
+    /// It should be used when requesting Waterfalls endpoints that expected a
     /// native bitcoin type serialized with [`bitcoin::consensus::Encodable`].
     ///
     /// # Errors
@@ -358,7 +358,7 @@ impl<S: Sleeper> AsyncClient<S> {
             .await
     }
 
-    /// Broadcast a [`Transaction`] to Esplora
+    /// Broadcast a [`Transaction`] to Waterfalls
     pub async fn broadcast(&self, transaction: &Transaction) -> Result<(), Error> {
         self.post_request_hex("/tx", transaction).await
     }
@@ -436,7 +436,7 @@ impl<S: Sleeper> AsyncClient<S> {
     /// provided.
     ///
     /// The maximum number of summaries returned depends on the backend itself:
-    /// esplora returns `10` while [mempool.space](https://mempool.space/docs/api) returns `15`.
+    /// waterfalls returns `10` while [mempool.space](https://mempool.space/docs/api) returns `15`.
     pub async fn get_blocks(&self, height: Option<u32>) -> Result<Vec<BlockSummary>, Error> {
         let path = match height {
             Some(height) => format!("/blocks/{height}"),

@@ -1,6 +1,6 @@
-//! Structs from the Esplora API
+//! Structs from the Waterfalls API
 //!
-//! See: <https://github.com/Blockstream/esplora/blob/master/API.md>
+//! See: <https://github.com/Blockstream/waterfalls/blob/master/API.md>
 
 pub use bitcoin::consensus::{deserialize, serialize};
 pub use bitcoin::hex::FromHex;
