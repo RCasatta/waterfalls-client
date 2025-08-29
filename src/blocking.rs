@@ -125,7 +125,7 @@ impl BlockingClient {
                 // URL encode the key and value to handle special characters
                 let encoded_key = urlencoding::encode(key);
                 let encoded_value = urlencoding::encode(value);
-                url.push_str(&format!("{}={}", encoded_key, encoded_value));
+                url.push_str(&format!("{encoded_key}={encoded_value}"));
             }
         }
 
@@ -209,7 +209,7 @@ impl BlockingClient {
         to_index: Option<u32>,
         utxo_only: bool,
     ) -> Result<WaterfallResponse, Error> {
-        let path = format!("/v{}/waterfalls", version);
+        let path = format!("/v{version}/waterfalls");
         let mut query_params = vec![
             ("descriptor", descriptor.to_string()),
             ("utxo_only", utxo_only.to_string()),

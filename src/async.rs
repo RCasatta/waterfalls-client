@@ -264,7 +264,7 @@ impl<S: Sleeper> AsyncClient<S> {
         to_index: Option<u32>,
         utxo_only: bool,
     ) -> Result<WaterfallResponse, Error> {
-        let path = format!("/v{}/waterfalls", version);
+        let path = format!("/v{version}/waterfalls");
         let mut query_params = vec![
             ("descriptor", descriptor.to_string()),
             ("utxo_only", utxo_only.to_string()),
