@@ -14,7 +14,9 @@
     flake-utils.lib.eachDefaultSystem
       (system:
         let
-          overlays = [ (import rust-overlay) ];
+          overlays = [ 
+            (import rust-overlay)
+          ];
           pkgs = import nixpkgs {
             inherit system overlays;
           };
@@ -27,7 +29,7 @@
             extensions = [ "rust-src" "clippy" ];
           };
 
-          nativeBuildInputs = with pkgs; [ rustToolchain pkg-config ];
+          nativeBuildInputs = with pkgs; [ rustToolchain pkg-config clang ];
           buildInputs = with pkgs; [ openssl openssl.dev ];
 
         in
@@ -40,6 +42,11 @@
             OPENSSL_DIR = "${pkgs.openssl.dev}";
             OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
             OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
+
+            # Environment variables for integration tests
+            BITCOIND_EXEC = "${pkgs.bitcoind}/bin/bitcoind";
+            ELEMENTSD_EXEC = "${pkgs.elementsd}/bin/elementsd";
+
           };
         }
       );

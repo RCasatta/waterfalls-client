@@ -248,4 +248,139 @@ impl_error!(bitcoin::consensus::encode::Error, BitcoinEncoding, Error);
 impl_error!(bitcoin::hex::HexToArrayError, HexToArray, Error);
 impl_error!(bitcoin::hex::HexToBytesError, HexToBytes, Error);
 
-// TODO: reimport and adapt tests from https://github.com/bitcoindevkit/rust-esplora-client
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_builder() {
+        let builder = Builder::new("https://waterfalls.example.com/api");
+        assert_eq!(builder.base_url, "https://waterfalls.example.com/api");
+        assert_eq!(builder.proxy, None);
+        assert_eq!(builder.timeout, None);
+        assert_eq!(builder.max_retries, DEFAULT_MAX_RETRIES);
+        assert!(builder.headers.is_empty());
+    }
+
+    #[test]
+    fn test_builder_with_proxy() {
+        let builder =
+            Builder::new("https://waterfalls.example.com/api").proxy("socks5://127.0.0.1:9050");
+        assert_eq!(builder.proxy, Some("socks5://127.0.0.1:9050".to_string()));
+    }
+
+    #[test]
+    fn test_builder_with_timeout() {
+        let builder = Builder::new("https://waterfalls.example.com/api").timeout(30);
+        assert_eq!(builder.timeout, Some(30));
+    }
+
+    #[test]
+    fn test_builder_with_headers() {
+        let builder = Builder::new("https://waterfalls.example.com/api")
+            .header("User-Agent", "test-client")
+            .header("Authorization", "Bearer token");
+
+        let expected_headers: HashMap<String, String> = [
+            ("User-Agent".to_string(), "test-client".to_string()),
+            ("Authorization".to_string(), "Bearer token".to_string()),
+        ]
+        .into();
+
+        assert_eq!(builder.headers, expected_headers);
+    }
+
+    #[test]
+    fn test_builder_with_max_retries() {
+        let builder = Builder::new("https://waterfalls.example.com/api").max_retries(10);
+        assert_eq!(builder.max_retries, 10);
+    }
+
+    #[test]
+    fn test_retryable_error_codes() {
+        assert!(RETRYABLE_ERROR_CODES.contains(&429)); // TOO_MANY_REQUESTS
+        assert!(RETRYABLE_ERROR_CODES.contains(&500)); // INTERNAL_SERVER_ERROR
+        assert!(RETRYABLE_ERROR_CODES.contains(&503)); // SERVICE_UNAVAILABLE
+        assert!(!RETRYABLE_ERROR_CODES.contains(&404)); // NOT_FOUND should not be retryable
+    }
+
+    #[test]
+    fn test_v_serialization() {
+        use crate::api::V;
+
+        let undefined = V::Undefined;
+        let vout = V::Vout(5);
+        let vin = V::Vin(3);
+
+        assert_eq!(undefined.raw(), 0);
+        assert_eq!(vout.raw(), 5);
+        assert_eq!(vin.raw(), -4); // -(3+1)
+
+        assert_eq!(V::from_raw(0), V::Undefined);
+        assert_eq!(V::from_raw(5), V::Vout(5));
+        assert_eq!(V::from_raw(-4), V::Vin(3));
+    }
+
+    #[test]
+    fn test_waterfall_response_is_empty() {
+        use crate::api::{TxSeen, WaterfallResponse, V};
+        use bitcoin::Txid;
+        use std::collections::BTreeMap;
+
+        // Empty response
+        let empty_response = WaterfallResponse {
+            txs_seen: BTreeMap::new(),
+            page: 0,
+            tip: None,
+        };
+        assert!(empty_response.is_empty());
+
+        // Response with empty vectors
+        let mut txs_seen = BTreeMap::new();
+        txs_seen.insert("key1".to_string(), vec![vec![]]);
+        let empty_vectors_response = WaterfallResponse {
+            txs_seen,
+            page: 0,
+            tip: None,
+        };
+        assert!(empty_vectors_response.is_empty());
+
+        // Response with actual transaction
+        let mut txs_seen = BTreeMap::new();
+        let tx_seen = TxSeen {
+            txid: Txid::from_str(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+            height: 100,
+            block_hash: None,
+            block_timestamp: None,
+            v: V::Undefined,
+        };
+        txs_seen.insert("key1".to_string(), vec![vec![tx_seen]]);
+        let non_empty_response = WaterfallResponse {
+            txs_seen,
+            page: 0,
+            tip: None,
+        };
+        assert!(!non_empty_response.is_empty());
+    }
+
+    #[cfg(feature = "blocking")]
+    #[test]
+    fn test_blocking_client_creation() {
+        let builder = Builder::new("https://waterfalls.example.com/api");
+        let _client = builder.build_blocking();
+        // Just test that it doesn't panic
+    }
+
+    #[cfg(all(feature = "async", feature = "tokio"))]
+    #[tokio::test]
+    async fn test_async_client_creation() {
+        let builder = Builder::new("https://waterfalls.example.com/api");
+        let _client = builder.build_async();
+        // Just test that it doesn't panic
+    }
+}

@@ -40,11 +40,11 @@ pub enum V {
 }
 
 impl V {
-    fn is_undefined(&self) -> bool {
+    pub fn is_undefined(&self) -> bool {
         matches!(self, V::Undefined)
     }
 
-    fn raw(&self) -> i32 {
+    pub fn raw(&self) -> i32 {
         match self {
             V::Undefined => 0,
             V::Vout(n) => *n as i32,
@@ -52,7 +52,7 @@ impl V {
         }
     }
 
-    fn from_raw(raw: i32) -> Self {
+    pub fn from_raw(raw: i32) -> Self {
         match raw {
             0 => V::Undefined,
             x if x > 0 => V::Vout(x as u32),
