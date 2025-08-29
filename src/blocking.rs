@@ -122,7 +122,10 @@ impl BlockingClient {
                 if i > 0 {
                     url.push('&');
                 }
-                url.push_str(&format!("{}={}", key, value));
+                // URL encode the key and value to handle special characters
+                let encoded_key = urlencoding::encode(key);
+                let encoded_value = urlencoding::encode(value);
+                url.push_str(&format!("{}={}", encoded_key, encoded_value));
             }
         }
 

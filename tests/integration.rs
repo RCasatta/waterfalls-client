@@ -262,7 +262,7 @@ async fn test_get_header_by_hash_async() {
     test_env.shutdown().await;
 }
 
-#[cfg(all(feature = "blocking", feature = "async"))]
+#[cfg(feature = "async")]
 #[tokio::test]
 async fn test_broadcast() {
     let test_env = launch_test_env().await;

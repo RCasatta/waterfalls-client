@@ -30,6 +30,7 @@ log = "^0.4"
 minreq = { version = "2.11.0", features = [
     "json-using-serde",
 ], optional = true }
+urlencoding = { version = "2.1", optional = true }
 reqwest = { version = "0.12", features = [
     "json",
 ], default-features = false, optional = true }
@@ -50,14 +51,14 @@ elements = "0.24"
 
 [features]
 default = ["blocking", "async", "async-https", "tokio"]
-blocking = ["minreq", "minreq/proxy"]
+blocking = ["minreq", "minreq/proxy", "urlencoding"]
 blocking-https = ["blocking", "minreq/https"]
 blocking-https-rustls = ["blocking", "minreq/https-rustls"]
 blocking-https-native = ["blocking", "minreq/https-native"]
 blocking-https-bundled = ["blocking", "minreq/https-bundled"]
 
 tokio = ["dep:tokio"]
-async = ["reqwest", "reqwest/socks", "tokio?/time"]
+async = ["reqwest", "reqwest/socks", "tokio?/time", "tokio"]
 async-https = ["async", "reqwest/default-tls"]
 async-https-native = ["async", "reqwest/native-tls"]
 async-https-rustls = ["async", "reqwest/rustls-tls"]
