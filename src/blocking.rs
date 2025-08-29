@@ -22,18 +22,11 @@ use log::{debug, error, info, trace};
 use minreq::{Proxy, Request, Response};
 
 use bitcoin::consensus::{deserialize, serialize, Decodable};
-use bitcoin::hashes::{sha256, Hash};
 use bitcoin::hex::{DisplayHex, FromHex};
 use bitcoin::Address;
-use bitcoin::{
-    block::Header as BlockHeader, Block, BlockHash, MerkleBlock, Script, Transaction, Txid,
-};
+use bitcoin::{block::Header as BlockHeader, BlockHash, Transaction, Txid};
 
-use crate::api::AddressStats;
-use crate::{
-    BlockStatus, BlockSummary, Builder, Error, MerkleProof, OutputStatus, Tx, TxStatus,
-    BASE_BACKOFF_MILLIS, RETRYABLE_ERROR_CODES,
-};
+use crate::{Builder, Error, WaterfallResponse, BASE_BACKOFF_MILLIS, RETRYABLE_ERROR_CODES};
 
 #[derive(Debug, Clone)]
 pub struct BlockingClient {
@@ -101,40 +94,6 @@ impl BlockingClient {
         }
     }
 
-    fn get_opt_response_txid(&self, path: &str) -> Result<Option<Txid>, Error> {
-        match self.get_with_retry(path) {
-            Ok(resp) if is_status_not_found(resp.status_code) => Ok(None),
-            Ok(resp) if !is_status_ok(resp.status_code) => {
-                let status = u16::try_from(resp.status_code).map_err(Error::StatusCode)?;
-                let message = resp.as_str().unwrap_or_default().to_string();
-                Err(Error::HttpResponse { status, message })
-            }
-            Ok(resp) => Ok(Some(
-                Txid::from_str(resp.as_str().map_err(Error::Minreq)?).map_err(Error::HexToArray)?,
-            )),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn get_opt_response_hex<T: Decodable>(&self, path: &str) -> Result<Option<T>, Error> {
-        match self.get_with_retry(path) {
-            Ok(resp) if is_status_not_found(resp.status_code) => Ok(None),
-            Ok(resp) if !is_status_ok(resp.status_code) => {
-                let status = u16::try_from(resp.status_code).map_err(Error::StatusCode)?;
-                let message = resp.as_str().unwrap_or_default().to_string();
-                Err(Error::HttpResponse { status, message })
-            }
-            Ok(resp) => {
-                let hex_str = resp.as_str().map_err(Error::Minreq)?;
-                let hex_vec = Vec::from_hex(hex_str).unwrap();
-                deserialize::<T>(&hex_vec)
-                    .map_err(Error::BitcoinEncoding)
-                    .map(|r| Some(r))
-            }
-            Err(e) => Err(e),
-        }
-    }
-
     fn get_response_hex<T: Decodable>(&self, path: &str) -> Result<T, Error> {
         match self.get_with_retry(path) {
             Ok(resp) if !is_status_ok(resp.status_code) => {
@@ -151,35 +110,47 @@ impl BlockingClient {
         }
     }
 
-    fn get_response_json<'a, T: serde::de::DeserializeOwned>(
-        &'a self,
-        path: &'a str,
-    ) -> Result<T, Error> {
-        let response = self.get_with_retry(path);
-        match response {
-            Ok(resp) if !is_status_ok(resp.status_code) => {
-                let status = u16::try_from(resp.status_code).map_err(Error::StatusCode)?;
-                let message = resp.as_str().unwrap_or_default().to_string();
-                Err(Error::HttpResponse { status, message })
-            }
-            Ok(resp) => Ok(resp.json::<T>().map_err(Error::Minreq)?),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn get_opt_response_json<T: serde::de::DeserializeOwned>(
+    fn get_response_json_with_query<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-    ) -> Result<Option<T>, Error> {
-        match self.get_with_retry(path) {
-            Ok(resp) if is_status_not_found(resp.status_code) => Ok(None),
+        query_params: &[(&str, &str)],
+    ) -> Result<T, Error> {
+        let mut url = format!("{}{}", self.url, path);
+        if !query_params.is_empty() {
+            url.push('?');
+            for (i, (key, value)) in query_params.iter().enumerate() {
+                if i > 0 {
+                    url.push('&');
+                }
+                url.push_str(&format!("{}={}", key, value));
+            }
+        }
+
+        let mut request = minreq::get(&url);
+
+        if let Some(proxy) = &self.proxy {
+            let proxy = Proxy::new(proxy.as_str())?;
+            request = request.with_proxy(proxy);
+        }
+
+        if let Some(timeout) = &self.timeout {
+            request = request.with_timeout(*timeout);
+        }
+
+        if !self.headers.is_empty() {
+            for (key, value) in &self.headers {
+                request = request.with_header(key, value);
+            }
+        }
+
+        match request.send() {
             Ok(resp) if !is_status_ok(resp.status_code) => {
                 let status = u16::try_from(resp.status_code).map_err(Error::StatusCode)?;
                 let message = resp.as_str().unwrap_or_default().to_string();
                 Err(Error::HttpResponse { status, message })
             }
-            Ok(resp) => Ok(Some(resp.json::<T>()?)),
-            Err(e) => Err(e),
+            Ok(resp) => Ok(resp.json::<T>()?),
+            Err(e) => Err(Error::Minreq(e)),
         }
     }
 
@@ -209,24 +180,48 @@ impl BlockingClient {
         }
     }
 
-    /// Get a [`Txid`] of a transaction given its index in a block with a given
-    /// hash.
-    pub fn get_txid_at_block_index(
+    /// Query the waterfalls endpoint with a descriptor
+    pub fn waterfalls(&self, descriptor: &str) -> Result<WaterfallResponse, Error> {
+        let path = "/v2/waterfalls";
+        self.get_response_json_with_query(path, &[("descriptor", descriptor)])
+    }
+
+    /// Query the waterfalls endpoint with addresses
+    pub fn waterfalls_addresses(&self, addresses: &[Address]) -> Result<WaterfallResponse, Error> {
+        let addresses_str = addresses
+            .iter()
+            .map(|a| a.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+        let path = "/v2/waterfalls";
+        self.get_response_json_with_query(path, &[("addresses", &addresses_str)])
+    }
+
+    /// Query waterfalls with version-specific parameters
+    pub fn waterfalls_version(
         &self,
-        block_hash: &BlockHash,
-        index: usize,
-    ) -> Result<Option<Txid>, Error> {
-        self.get_opt_response_txid(&format!("/block/{block_hash}/txid/{index}"))
-    }
+        descriptor: &str,
+        version: u8,
+        page: Option<u32>,
+        to_index: Option<u32>,
+        utxo_only: bool,
+    ) -> Result<WaterfallResponse, Error> {
+        let path = format!("/v{}/waterfalls", version);
+        let mut query_params = vec![
+            ("descriptor", descriptor.to_string()),
+            ("utxo_only", utxo_only.to_string()),
+        ];
 
-    /// Get the status of a [`Transaction`] given its [`Txid`].
-    pub fn get_tx_status(&self, txid: &Txid) -> Result<TxStatus, Error> {
-        self.get_response_json(&format!("/tx/{txid}/status"))
-    }
+        if let Some(page) = page {
+            query_params.push(("page", page.to_string()));
+        }
+        if let Some(to_index) = to_index {
+            query_params.push(("to_index", to_index.to_string()));
+        }
 
-    /// Get transaction info given it's [`Txid`].
-    pub fn get_tx_info(&self, txid: &Txid) -> Result<Option<Tx>, Error> {
-        self.get_opt_response_json(&format!("/tx/{txid}"))
+        let query_refs: Vec<(&str, &str)> =
+            query_params.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        self.get_response_json_with_query(&path, &query_refs)
     }
 
     /// Get a [`BlockHeader`] given a particular block hash.
@@ -234,36 +229,19 @@ impl BlockingClient {
         self.get_response_hex(&format!("/block/{block_hash}/header"))
     }
 
-    /// Get the [`BlockStatus`] given a particular [`BlockHash`].
-    pub fn get_block_status(&self, block_hash: &BlockHash) -> Result<BlockStatus, Error> {
-        self.get_response_json(&format!("/block/{block_hash}/status"))
+    /// Get the server's public key for encryption
+    pub fn server_recipient(&self) -> Result<String, Error> {
+        self.get_response_str("/v1/server_recipient")
     }
 
-    /// Get a [`Block`] given a particular [`BlockHash`].
-    pub fn get_block_by_hash(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
-        self.get_opt_response(&format!("/block/{block_hash}/raw"))
+    /// Get the server's address for message signing verification
+    pub fn server_address(&self) -> Result<String, Error> {
+        self.get_response_str("/v1/server_address")
     }
 
-    /// Get a merkle inclusion proof for a [`Transaction`] with the given
-    /// [`Txid`].
-    pub fn get_merkle_proof(&self, txid: &Txid) -> Result<Option<MerkleProof>, Error> {
-        self.get_opt_response_json(&format!("/tx/{txid}/merkle-proof"))
-    }
-
-    /// Get a [`MerkleBlock`] inclusion proof for a [`Transaction`] with the
-    /// given [`Txid`].
-    pub fn get_merkle_block(&self, txid: &Txid) -> Result<Option<MerkleBlock>, Error> {
-        self.get_opt_response_hex(&format!("/tx/{txid}/merkleblock-proof"))
-    }
-
-    /// Get the spending status of an output given a [`Txid`] and the output
-    /// index.
-    pub fn get_output_status(
-        &self,
-        txid: &Txid,
-        index: u64,
-    ) -> Result<Option<OutputStatus>, Error> {
-        self.get_opt_response_json(&format!("/tx/{txid}/outspend/{index}"))
+    /// Get time since last block with freshness indicator
+    pub fn time_since_last_block(&self) -> Result<String, Error> {
+        self.get_response_str("/v1/time_since_last_block")
     }
 
     /// Broadcast a [`Transaction`] to Waterfalls
@@ -295,12 +273,6 @@ impl BlockingClient {
         }
     }
 
-    /// Get the height of the current blockchain tip.
-    pub fn get_height(&self) -> Result<u32, Error> {
-        self.get_response_str("/blocks/tip/height")
-            .map(|s| u32::from_str(s.as_str()).map_err(Error::Parsing))?
-    }
-
     /// Get the [`BlockHash`] of the current blockchain tip.
     pub fn get_tip_hash(&self) -> Result<BlockHash, Error> {
         self.get_response_str("/blocks/tip/hash")
@@ -313,68 +285,10 @@ impl BlockingClient {
             .map(|s| BlockHash::from_str(s.as_str()).map_err(Error::HexToArray))?
     }
 
-    /// Get an map where the key is the confirmation target (in number of
-    /// blocks) and the value is the estimated feerate (in sat/vB).
-    pub fn get_fee_estimates(&self) -> Result<HashMap<u16, f64>, Error> {
-        self.get_response_json("/fee-estimates")
-    }
-
-    /// Get information about a specific address, includes confirmed balance and transactions in
-    /// the mempool.
-    pub fn get_address_stats(&self, address: &Address) -> Result<AddressStats, Error> {
-        let path = format!("/address/{address}");
-        self.get_response_json(&path)
-    }
-
-    /// Get transaction history for the specified address/scripthash, sorted with newest first.
-    ///
-    /// Returns up to 50 mempool transactions plus the first 25 confirmed transactions.
-    /// More can be requested by specifying the last txid seen by the previous query.
-    pub fn get_address_txs(
-        &self,
-        address: &Address,
-        last_seen: Option<Txid>,
-    ) -> Result<Vec<Tx>, Error> {
-        let path = match last_seen {
-            Some(last_seen) => format!("/address/{address}/txs/chain/{last_seen}"),
-            None => format!("/address/{address}/txs"),
-        };
-
-        self.get_response_json(&path)
-    }
-
-    /// Get confirmed transaction history for the specified address/scripthash,
-    /// sorted with newest first. Returns 25 transactions per page.
-    /// More can be requested by specifying the last txid seen by the previous
-    /// query.
-    pub fn scripthash_txs(
-        &self,
-        script: &Script,
-        last_seen: Option<Txid>,
-    ) -> Result<Vec<Tx>, Error> {
-        let script_hash = sha256::Hash::hash(script.as_bytes());
-        let path = match last_seen {
-            Some(last_seen) => format!("/scripthash/{script_hash:x}/txs/chain/{last_seen}"),
-            None => format!("/scripthash/{script_hash:x}/txs"),
-        };
-        self.get_response_json(&path)
-    }
-
-    /// Gets some recent block summaries starting at the tip or at `height` if
-    /// provided.
-    ///
-    /// The maximum number of summaries returned depends on the backend itself:
-    /// waterfalls returns `10` while [mempool.space](https://mempool.space/docs/api) returns `15`.
-    pub fn get_blocks(&self, height: Option<u32>) -> Result<Vec<BlockSummary>, Error> {
-        let path = match height {
-            Some(height) => format!("/blocks/{height}"),
-            None => "/blocks".to_string(),
-        };
-        let blocks: Vec<BlockSummary> = self.get_response_json(&path)?;
-        if blocks.is_empty() {
-            return Err(Error::InvalidResponse);
-        }
-        Ok(blocks)
+    /// Get transaction history for the specified address in Esplora-compatible format
+    pub fn get_address_txs(&self, address: &Address) -> Result<String, Error> {
+        let path = format!("/address/{address}/txs");
+        self.get_response_str(&path)
     }
 
     /// Sends a GET request to the given `url`, retrying failed attempts

@@ -11,28 +11,20 @@
 
 //! Waterfalls by way of `reqwest` HTTP client.
 
-use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
 use bitcoin::consensus::{deserialize, serialize, Decodable, Encodable};
-use bitcoin::hashes::{sha256, Hash};
 use bitcoin::hex::{DisplayHex, FromHex};
 use bitcoin::Address;
-use bitcoin::{
-    block::Header as BlockHeader, Block, BlockHash, MerkleBlock, Script, Transaction, Txid,
-};
+use bitcoin::{block::Header as BlockHeader, BlockHash, Transaction, Txid};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, trace};
 
 use reqwest::{header, Client, Response};
 
-use crate::api::AddressStats;
-use crate::{
-    BlockStatus, BlockSummary, Builder, Error, MerkleProof, OutputStatus, Tx, TxStatus,
-    BASE_BACKOFF_MILLIS, RETRYABLE_ERROR_CODES,
-};
+use crate::{Builder, Error, WaterfallResponse, BASE_BACKOFF_MILLIS, RETRYABLE_ERROR_CODES};
 
 #[derive(Debug, Clone)]
 pub struct AsyncClient<S = DefaultSleeper> {
@@ -64,11 +56,11 @@ impl<S: Sleeper> AsyncClient<S> {
 
         if !builder.headers.is_empty() {
             let mut headers = header::HeaderMap::new();
-            for (k, v) in builder.headers {
+            for (k, v) in &builder.headers {
                 let header_name = header::HeaderName::from_lowercase(k.to_lowercase().as_bytes())
-                    .map_err(|_| Error::InvalidHttpHeaderName(k))?;
-                let header_value = header::HeaderValue::from_str(&v)
-                    .map_err(|_| Error::InvalidHttpHeaderValue(v))?;
+                    .map_err(|_| Error::InvalidHttpHeaderName(k.clone()))?;
+                let header_value = header::HeaderValue::from_str(v)
+                    .map_err(|_| Error::InvalidHttpHeaderValue(v.clone()))?;
                 headers.insert(header_name, header_value);
             }
             client_builder = client_builder.default_headers(headers);
@@ -129,22 +121,19 @@ impl<S: Sleeper> AsyncClient<S> {
         }
     }
 
-    /// Make an HTTP GET request to given URL, deserializing to any `T` that
+    /// Make an HTTP GET request to given URL with query parameters, deserializing to any `T` that
     /// implements [`serde::de::DeserializeOwned`].
-    ///
-    /// It should be used when requesting Waterfalls endpoints that have a specific
-    /// defined API, mostly defined in [`crate::api`].
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error either from the HTTP client, or the
-    /// [`serde::de::DeserializeOwned`] deserialization.
-    async fn get_response_json<T: serde::de::DeserializeOwned>(
+    async fn get_response_json_with_query<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
+        query_params: &[(&str, &str)],
     ) -> Result<T, Error> {
         let url = format!("{}{}", self.url, path);
-        let response = self.get_with_retry(&url).await?;
+        let mut request = self.client.get(&url);
+        for (key, value) in query_params {
+            request = request.query(&[(key, value)]);
+        }
+        let response = request.send().await?;
 
         if !response.status().is_success() {
             return Err(Error::HttpResponse {
@@ -154,23 +143,6 @@ impl<S: Sleeper> AsyncClient<S> {
         }
 
         response.json::<T>().await.map_err(Error::Reqwest)
-    }
-
-    /// Make an HTTP GET request to given URL, deserializing to `Option<T>`.
-    ///
-    /// It uses [`AsyncWaterfallsClient::get_response_json`] internally.
-    ///
-    /// See [`AsyncWaterfallsClient::get_response_json`] above for full
-    /// documentation.
-    async fn get_opt_response_json<T: serde::de::DeserializeOwned>(
-        &self,
-        url: &str,
-    ) -> Result<Option<T>, Error> {
-        match self.get_response_json(url).await {
-            Ok(res) => Ok(Some(res)),
-            Err(Error::HttpResponse { status: 404, .. }) => Ok(None),
-            Err(e) => Err(e),
-        }
     }
 
     /// Make an HTTP GET request to given URL, deserializing to any `T` that
@@ -199,20 +171,6 @@ impl<S: Sleeper> AsyncClient<S> {
         Ok(deserialize(&Vec::from_hex(&hex_str)?)?)
     }
 
-    /// Make an HTTP GET request to given URL, deserializing to `Option<T>`.
-    ///
-    /// It uses [`AsyncWaterfallsClient::get_response_hex`] internally.
-    ///
-    /// See [`AsyncWaterfallsClient::get_response_hex`] above for full
-    /// documentation.
-    async fn get_opt_response_hex<T: Decodable>(&self, path: &str) -> Result<Option<T>, Error> {
-        match self.get_response_hex(path).await {
-            Ok(res) => Ok(Some(res)),
-            Err(Error::HttpResponse { status: 404, .. }) => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-
     /// Make an HTTP GET request to given URL, deserializing to `String`.
     ///
     /// It should be used when requesting Waterfalls endpoints that can return
@@ -233,20 +191,6 @@ impl<S: Sleeper> AsyncClient<S> {
         }
 
         Ok(response.text().await?)
-    }
-
-    /// Make an HTTP GET request to given URL, deserializing to `Option<T>`.
-    ///
-    /// It uses [`AsyncWaterfallsClient::get_response_text`] internally.
-    ///
-    /// See [`AsyncWaterfallsClient::get_response_text`] above for full
-    /// documentation.
-    async fn get_opt_response_text(&self, path: &str) -> Result<Option<String>, Error> {
-        match self.get_response_text(path).await {
-            Ok(s) => Ok(Some(s)),
-            Err(Error::HttpResponse { status: 404, .. }) => Ok(None),
-            Err(e) => Err(e),
-        }
     }
 
     /// Make an HTTP POST request to given URL, serializing from any `T` that
@@ -289,30 +233,53 @@ impl<S: Sleeper> AsyncClient<S> {
         }
     }
 
-    /// Get a [`Txid`] of a transaction given its index in a block with a given
-    /// hash.
-    pub async fn get_txid_at_block_index(
+    /// Query the waterfalls endpoint with a descriptor
+    pub async fn waterfalls(&self, descriptor: &str) -> Result<WaterfallResponse, Error> {
+        let path = "/v2/waterfalls";
+        self.get_response_json_with_query(path, &[("descriptor", descriptor)])
+            .await
+    }
+
+    /// Query the waterfalls endpoint with addresses
+    pub async fn waterfalls_addresses(
         &self,
-        block_hash: &BlockHash,
-        index: usize,
-    ) -> Result<Option<Txid>, Error> {
-        match self
-            .get_opt_response_text(&format!("/block/{block_hash}/txid/{index}"))
-            .await?
-        {
-            Some(s) => Ok(Some(Txid::from_str(&s).map_err(Error::HexToArray)?)),
-            None => Ok(None),
+        addresses: &[Address],
+    ) -> Result<WaterfallResponse, Error> {
+        let addresses_str = addresses
+            .iter()
+            .map(|a| a.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+        let path = "/v2/waterfalls";
+        self.get_response_json_with_query(path, &[("addresses", &addresses_str)])
+            .await
+    }
+
+    /// Query waterfalls with version-specific parameters
+    pub async fn waterfalls_version(
+        &self,
+        descriptor: &str,
+        version: u8,
+        page: Option<u32>,
+        to_index: Option<u32>,
+        utxo_only: bool,
+    ) -> Result<WaterfallResponse, Error> {
+        let path = format!("/v{}/waterfalls", version);
+        let mut query_params = vec![
+            ("descriptor", descriptor.to_string()),
+            ("utxo_only", utxo_only.to_string()),
+        ];
+
+        if let Some(page) = page {
+            query_params.push(("page", page.to_string()));
         }
-    }
+        if let Some(to_index) = to_index {
+            query_params.push(("to_index", to_index.to_string()));
+        }
 
-    /// Get the status of a [`Transaction`] given its [`Txid`].
-    pub async fn get_tx_status(&self, txid: &Txid) -> Result<TxStatus, Error> {
-        self.get_response_json(&format!("/tx/{txid}/status")).await
-    }
-
-    /// Get transaction info given it's [`Txid`].
-    pub async fn get_tx_info(&self, txid: &Txid) -> Result<Option<Tx>, Error> {
-        self.get_opt_response_json(&format!("/tx/{txid}")).await
+        let query_refs: Vec<(&str, &str)> =
+            query_params.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        self.get_response_json_with_query(&path, &query_refs).await
     }
 
     /// Get a [`BlockHeader`] given a particular block hash.
@@ -321,53 +288,24 @@ impl<S: Sleeper> AsyncClient<S> {
             .await
     }
 
-    /// Get the [`BlockStatus`] given a particular [`BlockHash`].
-    pub async fn get_block_status(&self, block_hash: &BlockHash) -> Result<BlockStatus, Error> {
-        self.get_response_json(&format!("/block/{block_hash}/status"))
-            .await
+    /// Get the server's public key for encryption
+    pub async fn server_recipient(&self) -> Result<String, Error> {
+        self.get_response_text("/v1/server_recipient").await
     }
 
-    /// Get a [`Block`] given a particular [`BlockHash`].
-    pub async fn get_block_by_hash(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
-        self.get_opt_response(&format!("/block/{block_hash}/raw"))
-            .await
+    /// Get the server's address for message signing verification
+    pub async fn server_address(&self) -> Result<String, Error> {
+        self.get_response_text("/v1/server_address").await
     }
 
-    /// Get a merkle inclusion proof for a [`Transaction`] with the given
-    /// [`Txid`].
-    pub async fn get_merkle_proof(&self, tx_hash: &Txid) -> Result<Option<MerkleProof>, Error> {
-        self.get_opt_response_json(&format!("/tx/{tx_hash}/merkle-proof"))
-            .await
-    }
-
-    /// Get a [`MerkleBlock`] inclusion proof for a [`Transaction`] with the
-    /// given [`Txid`].
-    pub async fn get_merkle_block(&self, tx_hash: &Txid) -> Result<Option<MerkleBlock>, Error> {
-        self.get_opt_response_hex(&format!("/tx/{tx_hash}/merkleblock-proof"))
-            .await
-    }
-
-    /// Get the spending status of an output given a [`Txid`] and the output
-    /// index.
-    pub async fn get_output_status(
-        &self,
-        txid: &Txid,
-        index: u64,
-    ) -> Result<Option<OutputStatus>, Error> {
-        self.get_opt_response_json(&format!("/tx/{txid}/outspend/{index}"))
-            .await
+    /// Get time since last block with freshness indicator
+    pub async fn time_since_last_block(&self) -> Result<String, Error> {
+        self.get_response_text("/v1/time_since_last_block").await
     }
 
     /// Broadcast a [`Transaction`] to Waterfalls
     pub async fn broadcast(&self, transaction: &Transaction) -> Result<(), Error> {
         self.post_request_hex("/tx", transaction).await
-    }
-
-    /// Get the current height of the blockchain tip
-    pub async fn get_height(&self) -> Result<u32, Error> {
-        self.get_response_text("/blocks/tip/height")
-            .await
-            .map(|height| u32::from_str(&height).map_err(Error::Parsing))?
     }
 
     /// Get the [`BlockHash`] of the current blockchain tip.
@@ -384,69 +322,10 @@ impl<S: Sleeper> AsyncClient<S> {
             .map(|block_hash| BlockHash::from_str(&block_hash).map_err(Error::HexToArray))?
     }
 
-    /// Get information about a specific address, includes confirmed balance and transactions in
-    /// the mempool.
-    pub async fn get_address_stats(&self, address: &Address) -> Result<AddressStats, Error> {
-        let path = format!("/address/{address}");
-        self.get_response_json(&path).await
-    }
-
-    /// Get transaction history for the specified address/scripthash, sorted with newest first.
-    ///
-    /// Returns up to 50 mempool transactions plus the first 25 confirmed transactions.
-    /// More can be requested by specifying the last txid seen by the previous query.
-    pub async fn get_address_txs(
-        &self,
-        address: &Address,
-        last_seen: Option<Txid>,
-    ) -> Result<Vec<Tx>, Error> {
-        let path = match last_seen {
-            Some(last_seen) => format!("/address/{address}/txs/chain/{last_seen}"),
-            None => format!("/address/{address}/txs"),
-        };
-
-        self.get_response_json(&path).await
-    }
-
-    /// Get confirmed transaction history for the specified address/scripthash,
-    /// sorted with newest first. Returns 25 transactions per page.
-    /// More can be requested by specifying the last txid seen by the previous
-    /// query.
-    pub async fn scripthash_txs(
-        &self,
-        script: &Script,
-        last_seen: Option<Txid>,
-    ) -> Result<Vec<Tx>, Error> {
-        let script_hash = sha256::Hash::hash(script.as_bytes());
-        let path = match last_seen {
-            Some(last_seen) => format!("/scripthash/{script_hash:x}/txs/chain/{last_seen}"),
-            None => format!("/scripthash/{script_hash:x}/txs"),
-        };
-
-        self.get_response_json(&path).await
-    }
-
-    /// Get an map where the key is the confirmation target (in number of
-    /// blocks) and the value is the estimated feerate (in sat/vB).
-    pub async fn get_fee_estimates(&self) -> Result<HashMap<u16, f64>, Error> {
-        self.get_response_json("/fee-estimates").await
-    }
-
-    /// Gets some recent block summaries starting at the tip or at `height` if
-    /// provided.
-    ///
-    /// The maximum number of summaries returned depends on the backend itself:
-    /// waterfalls returns `10` while [mempool.space](https://mempool.space/docs/api) returns `15`.
-    pub async fn get_blocks(&self, height: Option<u32>) -> Result<Vec<BlockSummary>, Error> {
-        let path = match height {
-            Some(height) => format!("/blocks/{height}"),
-            None => "/blocks".to_string(),
-        };
-        let blocks: Vec<BlockSummary> = self.get_response_json(&path).await?;
-        if blocks.is_empty() {
-            return Err(Error::InvalidResponse);
-        }
-        Ok(blocks)
+    /// Get transaction history for the specified address in Esplora-compatible format
+    pub async fn get_address_txs(&self, address: &Address) -> Result<String, Error> {
+        let path = format!("/address/{address}/txs");
+        self.get_response_text(&path).await
     }
 
     /// Get the underlying base URL.

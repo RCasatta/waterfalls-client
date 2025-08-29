@@ -1,7 +1,3 @@
-//! Structs from the Waterfalls API
-//!
-//! See: <https://github.com/Blockstream/waterfalls/blob/master/API.md>
-
 pub use bitcoin::consensus::{deserialize, serialize};
 pub use bitcoin::hex::FromHex;
 use bitcoin::Weight;
@@ -9,7 +5,89 @@ pub use bitcoin::{
     transaction, Amount, BlockHash, OutPoint, ScriptBuf, Transaction, TxIn, TxOut, Txid, Witness,
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+/// Response from the waterfalls endpoint
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+pub struct WaterfallResponse {
+    pub txs_seen: BTreeMap<String, Vec<Vec<TxSeen>>>,
+    pub page: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tip: Option<BlockHash>,
+}
+
+/// A transaction seen in the blockchain for a specific script
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct TxSeen {
+    pub txid: Txid,
+    pub height: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_hash: Option<BlockHash>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_timestamp: Option<u32>,
+    #[serde(skip_serializing_if = "V::is_undefined", default)]
+    pub v: V,
+}
+
+/// Enum representing whether a transaction was seen in a vout or vin
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub enum V {
+    #[default]
+    Undefined,
+    Vin(u32),
+    Vout(u32),
+}
+
+impl V {
+    fn is_undefined(&self) -> bool {
+        matches!(self, V::Undefined)
+    }
+
+    fn raw(&self) -> i32 {
+        match self {
+            V::Undefined => 0,
+            V::Vout(n) => *n as i32,
+            V::Vin(n) => -(*n as i32) - 1,
+        }
+    }
+
+    fn from_raw(raw: i32) -> Self {
+        match raw {
+            0 => V::Undefined,
+            x if x > 0 => V::Vout(x as u32),
+            x => V::Vin((-x - 1) as u32),
+        }
+    }
+}
+
+impl Serialize for V {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_i32(self.raw())
+    }
+}
+
+impl<'de> Deserialize<'de> for V {
+    fn deserialize<D>(deserializer: D) -> Result<V, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = i32::deserialize(deserializer)?;
+        Ok(V::from_raw(raw))
+    }
+}
+
+impl WaterfallResponse {
+    pub fn is_empty(&self) -> bool {
+        self.txs_seen
+            .iter()
+            .flat_map(|(_, v)| v.iter())
+            .all(|a| a.is_empty())
+    }
+}
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct PrevOut {

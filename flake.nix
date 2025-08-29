@@ -28,7 +28,7 @@
           };
 
           nativeBuildInputs = with pkgs; [ rustToolchain pkg-config ];
-          buildInputs = with pkgs; [ openssl ];
+          buildInputs = with pkgs; [ openssl openssl.dev ];
 
         in
         {
@@ -36,6 +36,10 @@
             inherit buildInputs nativeBuildInputs;
 
             RUST_VERSION = rustVersion;
+            PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig:${pkgs.pkg-config}/lib/pkgconfig";
+            OPENSSL_DIR = "${pkgs.openssl.dev}";
+            OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
+            OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
           };
         }
       );
