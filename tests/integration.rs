@@ -37,9 +37,11 @@ fn convert_address(waterfalls_addr: &waterfalls::be::Address) -> Option<&bitcoin
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_get_tx_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_get_tx_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
@@ -48,16 +50,13 @@ async fn test_get_tx_blocking() {
     // Create a transaction to test with
     let address = test_env.get_new_address(None);
     let txid = test_env.send_to(&address, 10000);
-    test_env.node_generate(1).await;
+    rt.block_on(test_env.node_generate(1));
 
     // Convert waterfalls txid to bitcoin txid
     let bitcoin_txid = convert_txid(txid);
 
-    // Test blocking client can retrieve the transaction (using spawn_blocking)
-    let tx_blocking = tokio::task::spawn_blocking(move || blocking_client.get_tx(&bitcoin_txid))
-        .await
-        .unwrap()
-        .unwrap();
+    // Test blocking client can retrieve the transaction
+    let tx_blocking = blocking_client.get_tx(&bitcoin_txid).unwrap();
 
     assert!(tx_blocking.is_some());
 
@@ -65,7 +64,7 @@ async fn test_get_tx_blocking() {
         assert_eq!(tx.compute_txid(), bitcoin_txid);
     }
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -98,9 +97,11 @@ async fn test_get_tx_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_get_tx_no_opt_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_get_tx_no_opt_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
@@ -109,21 +110,17 @@ async fn test_get_tx_no_opt_blocking() {
     // Create a transaction to test with
     let address = test_env.get_new_address(None);
     let txid = test_env.send_to(&address, 10000);
-    test_env.node_generate(1).await;
+    rt.block_on(test_env.node_generate(1));
 
     // Convert waterfalls txid to bitcoin txid
     let bitcoin_txid = convert_txid(txid);
 
-    // Test blocking client can retrieve the transaction (using spawn_blocking)
-    let tx_blocking =
-        tokio::task::spawn_blocking(move || blocking_client.get_tx_no_opt(&bitcoin_txid))
-            .await
-            .unwrap()
-            .unwrap();
+    // Test blocking client can retrieve the transaction
+    let tx_blocking = blocking_client.get_tx_no_opt(&bitcoin_txid).unwrap();
 
     assert_eq!(tx_blocking.compute_txid(), bitcoin_txid);
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -152,23 +149,22 @@ async fn test_get_tx_no_opt_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_get_tip_hash_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_get_tip_hash_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
     let blocking_client = builder.build_blocking();
 
-    let tip_hash_blocking = tokio::task::spawn_blocking(move || blocking_client.get_tip_hash())
-        .await
-        .unwrap()
-        .unwrap();
+    let tip_hash_blocking = blocking_client.get_tip_hash().unwrap();
 
     // Assert we got a valid block hash
     assert!(!tip_hash_blocking.to_string().is_empty());
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -189,25 +185,23 @@ async fn test_get_tip_hash_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_get_block_hash_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_get_block_hash_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
     let blocking_client = builder.build_blocking();
 
     // Get block hash at a specific height
-    let block_hash_blocking =
-        tokio::task::spawn_blocking(move || blocking_client.get_block_hash(0))
-            .await
-            .unwrap()
-            .unwrap();
+    let block_hash_blocking = blocking_client.get_block_hash(0).unwrap();
 
     // Assert we got a valid block hash
     assert!(!block_hash_blocking.to_string().is_empty());
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -229,27 +223,24 @@ async fn test_get_block_hash_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_get_header_by_hash_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_get_header_by_hash_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
     let blocking_client = builder.build_blocking();
 
     // Get the genesis block hash and header
-    let header_blocking = tokio::task::spawn_blocking(move || {
-        let block_hash = blocking_client.get_block_hash(0)?;
-        blocking_client.get_header_by_hash(&block_hash)
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let block_hash = blocking_client.get_block_hash(0).unwrap();
+    let header_blocking = blocking_client.get_header_by_hash(&block_hash).unwrap();
 
     // Assert we got a valid header (check version is non-zero)
     assert_ne!(header_blocking.version.to_consensus(), 0);
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -301,9 +292,11 @@ async fn test_broadcast() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_waterfalls_endpoint_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_waterfalls_endpoint_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
@@ -313,16 +306,12 @@ async fn test_waterfalls_endpoint_blocking() {
     let descriptor = "wpkh(tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/<0;1>/*)";
 
     // Test waterfalls endpoint
-    let result_blocking =
-        tokio::task::spawn_blocking(move || blocking_client.waterfalls(descriptor))
-            .await
-            .unwrap()
-            .unwrap();
+    let result_blocking = blocking_client.waterfalls(descriptor).unwrap();
 
     assert_eq!(result_blocking.page, 0);
     assert!(result_blocking.tip.is_some());
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -347,9 +336,11 @@ async fn test_waterfalls_endpoint_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_waterfalls_addresses_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_waterfalls_addresses_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
@@ -363,18 +354,14 @@ async fn test_waterfalls_addresses_blocking() {
 
     // Send some funds to the address
     let _txid = test_env.send_to(&waterfalls_address, 10000);
-    test_env.node_generate(1).await;
+    rt.block_on(test_env.node_generate(1));
 
     // Test waterfalls_addresses endpoint
-    let result_blocking =
-        tokio::task::spawn_blocking(move || blocking_client.waterfalls_addresses(&addresses))
-            .await
-            .unwrap()
-            .unwrap();
+    let result_blocking = blocking_client.waterfalls_addresses(&addresses).unwrap();
 
     assert!(!result_blocking.is_empty());
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -405,9 +392,11 @@ async fn test_waterfalls_addresses_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_waterfalls_version_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_waterfalls_version_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
@@ -416,27 +405,20 @@ async fn test_waterfalls_version_blocking() {
     let descriptor = "wpkh(tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/<0;1>/*)";
 
     // Test waterfalls_version endpoint with various parameters
-    let result_blocking = tokio::task::spawn_blocking({
-        let client = blocking_client.clone();
-        move || client.waterfalls_version(descriptor, 2, None, None, false)
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let result_blocking = blocking_client
+        .waterfalls_version(descriptor, 2, None, None, false)
+        .unwrap();
 
     assert_eq!(result_blocking.page, 0);
 
     // Test with utxo_only = true
-    let result_utxo_blocking = tokio::task::spawn_blocking(move || {
-        blocking_client.waterfalls_version(descriptor, 2, None, None, true)
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let result_utxo_blocking = blocking_client
+        .waterfalls_version(descriptor, 2, None, None, true)
+        .unwrap();
 
     assert_eq!(result_utxo_blocking.page, 0);
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -470,43 +452,29 @@ async fn test_waterfalls_version_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_server_info_endpoints_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_server_info_endpoints_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
     let blocking_client = builder.build_blocking();
 
     // Test server_recipient endpoint
-    let recipient_blocking = tokio::task::spawn_blocking({
-        let client = blocking_client.clone();
-        move || client.server_recipient()
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let recipient_blocking = blocking_client.server_recipient().unwrap();
     assert!(!recipient_blocking.is_empty());
 
     // Test server_address endpoint
-    let address_blocking = tokio::task::spawn_blocking({
-        let client = blocking_client.clone();
-        move || client.server_address()
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let address_blocking = blocking_client.server_address().unwrap();
     assert!(!address_blocking.is_empty());
 
     // Test time_since_last_block endpoint
-    let time_blocking =
-        tokio::task::spawn_blocking(move || blocking_client.time_since_last_block())
-            .await
-            .unwrap()
-            .unwrap();
+    let time_blocking = blocking_client.time_since_last_block().unwrap();
     assert!(!time_blocking.is_empty());
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -534,9 +502,11 @@ async fn test_server_info_endpoints_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_get_address_txs_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_get_address_txs_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     let builder = Builder::new(url);
@@ -548,20 +518,14 @@ async fn test_get_address_txs_blocking() {
         .expect("Expected Bitcoin address from test environment");
     let waterfalls_txid = test_env.send_to(&waterfalls_address, 10000);
     let bitcoin_txid = convert_txid(waterfalls_txid);
-    test_env.node_generate(1).await;
+    rt.block_on(test_env.node_generate(1));
 
     // Test get_address_txs endpoint
-    let bitcoin_address_clone = bitcoin_address.clone();
-    let txs_blocking = tokio::task::spawn_blocking(move || {
-        blocking_client.get_address_txs(&bitcoin_address_clone)
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let txs_blocking = blocking_client.get_address_txs(bitcoin_address).unwrap();
 
     assert!(txs_blocking.contains(&bitcoin_txid.to_string()));
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
@@ -590,9 +554,11 @@ async fn test_get_address_txs_async() {
 }
 
 #[cfg(feature = "blocking")]
-#[tokio::test]
-async fn test_client_with_headers_blocking() {
-    let test_env = launch_test_env().await;
+#[test]
+fn test_client_with_headers_blocking() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let test_env = rt.block_on(launch_test_env());
     let url = test_env.base_url();
 
     // Test client with custom headers
@@ -612,15 +578,12 @@ async fn test_client_with_headers_blocking() {
     let blocking_client = builder.build_blocking();
 
     // Test that the client still works with custom headers
-    let tip_hash_blocking = tokio::task::spawn_blocking(move || blocking_client.get_tip_hash())
-        .await
-        .unwrap()
-        .unwrap();
+    let tip_hash_blocking = blocking_client.get_tip_hash().unwrap();
 
     // Assert we got a valid block hash
     assert!(!tip_hash_blocking.to_string().is_empty());
 
-    test_env.shutdown().await;
+    rt.block_on(test_env.shutdown());
 }
 
 #[cfg(feature = "async")]
