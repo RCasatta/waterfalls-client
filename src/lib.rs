@@ -72,7 +72,6 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::num::TryFromIntError;
-use std::time::Duration;
 
 #[cfg(feature = "async")]
 pub use r#async::Sleeper;
@@ -97,7 +96,8 @@ pub const RETRYABLE_ERROR_CODES: [u16; 3] = [
 ];
 
 /// Base backoff in milliseconds.
-const BASE_BACKOFF_MILLIS: Duration = Duration::from_millis(256);
+#[cfg(any(feature = "blocking", feature = "async"))]
+const BASE_BACKOFF_MILLIS: std::time::Duration = std::time::Duration::from_millis(256);
 
 /// Default max retries.
 const DEFAULT_MAX_RETRIES: usize = 6;
