@@ -72,10 +72,14 @@ jobs:
         cargo update -p webpki-roots@1.0.2 --precise "1.0.1"
 
         cargo update -p bzip2-sys --precise "0.1.12+1.0.8" # dev-dependency
+    - name: Download bitcoind 28.0
+      run: curl -sSL https://bitcoincore.org/bin/bitcoin-core-28.0/bitcoin-28.0-x86_64-linux-gnu.tar.gz | tar -xz
     - name: Build
       run: cargo build --features ${{ matrix.features }} --no-default-features
     - name: Test
       run: cargo test --features ${{ matrix.features }} --no-default-features -- --test-threads=1
+      env:
+        BITCOIND_EXEC: ${{ github.workspace }}/bitcoin-28.0/bin/bitcoind
 
   fmt:
     name: Rust Formatting
