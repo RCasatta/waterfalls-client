@@ -4,7 +4,7 @@
 //! an actual waterfalls server instance.
 
 #[cfg(any(feature = "blocking", feature = "async"))]
-use waterfalls_client::Builder;
+use waterfalls_client::{Builder, WaterfallResponse};
 
 #[cfg(any(feature = "blocking", feature = "async"))]
 use bitcoin::Network;
@@ -642,8 +642,35 @@ fn get_production_descriptor(network: Network) -> Option<&'static str> {
     }
 }
 
-#[cfg(feature = "blocking")]
-fn test_blocking(network: Network) {
+#[cfg(any(feature = "blocking", feature = "async"))]
+fn assert_result(response: &WaterfallResponse, min_transactions: usize) {
+    // Count total transactions across all keys and nested vectors
+    let total_transactions = response
+        .txs_seen
+        .values()
+        .flat_map(|v| v.iter())
+        .map(|inner_vec| inner_vec.len())
+        .sum::<usize>();
+
+    // Assert we have a valid tip
+    assert!(response.tip.is_some(), "Response should have a tip");
+
+    // Assert we have at least the minimum number of transactions
+    assert!(
+        total_transactions >= min_transactions,
+        "Expected at least {} transactions, but found {}",
+        min_transactions,
+        total_transactions
+    );
+
+    println!(
+        "Found {} transactions (minimum expected: {}), tip: {:?}",
+        total_transactions, min_transactions, response.tip
+    );
+}
+
+#[cfg(feature = "blocking-https")]
+fn test_blocking(network: Network, min_transactions: usize) {
     let url = get_production_url(network).expect("URL not found for network");
     let descriptor = get_production_descriptor(network).expect("Descriptor not found for network");
 
@@ -653,13 +680,13 @@ fn test_blocking(network: Network) {
     // Test waterfalls endpoint with production descriptor
     let result = blocking_client.waterfalls(descriptor).unwrap();
 
-    // Basic assertions to verify the response is valid
-    assert!(result.tip.is_some());
-    println!("Blocking {:?} test passed - tip: {:?}", network, result.tip);
+    // Assert the response has the expected number of transactions
+    assert_result(&result, min_transactions);
+    println!("Blocking {:?} test passed", network);
 }
 
 #[cfg(feature = "async")]
-async fn test_async(network: Network) {
+async fn test_async(network: Network, min_transactions: usize) {
     let url = get_production_url(network).expect("URL not found for network");
     let descriptor = get_production_descriptor(network).expect("Descriptor not found for network");
 
@@ -669,35 +696,35 @@ async fn test_async(network: Network) {
     // Test waterfalls endpoint with production descriptor
     let result = async_client.waterfalls(descriptor).await.unwrap();
 
-    // Basic assertions to verify the response is valid
-    assert!(result.tip.is_some());
-    println!("Async {:?} test passed - tip: {:?}", network, result.tip);
+    // Assert the response has the expected number of transactions
+    assert_result(&result, min_transactions);
+    println!("Async {:?} test passed", network);
 }
 
-#[cfg(feature = "blocking")]
+#[cfg(feature = "blocking-https")]
 #[test]
 #[ignore]
 fn test_blocking_mainnet() {
-    test_blocking(Network::Bitcoin);
+    test_blocking(Network::Bitcoin, 28);
 }
 
-#[cfg(feature = "blocking")]
+#[cfg(feature = "blocking-https")]
 #[test]
 #[ignore]
 fn test_blocking_signet() {
-    test_blocking(Network::Signet);
+    test_blocking(Network::Signet, 5);
 }
 
 #[cfg(feature = "async")]
 #[tokio::test]
 #[ignore]
 async fn test_async_mainnet() {
-    test_async(Network::Bitcoin).await;
+    test_async(Network::Bitcoin, 28).await;
 }
 
 #[cfg(feature = "async")]
 #[tokio::test]
 #[ignore]
 async fn test_async_signet() {
-    test_async(Network::Signet).await;
+    test_async(Network::Signet, 5).await;
 }
