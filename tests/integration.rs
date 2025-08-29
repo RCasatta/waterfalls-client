@@ -658,9 +658,7 @@ fn assert_result(response: &WaterfallResponse, min_transactions: usize) {
     // Assert we have at least the minimum number of transactions
     assert!(
         total_transactions >= min_transactions,
-        "Expected at least {} transactions, but found {}",
-        min_transactions,
-        total_transactions
+        "Expected at least {min_transactions} transactions, but found {total_transactions}"
     );
 
     println!(
@@ -682,7 +680,7 @@ fn test_blocking(network: Network, min_transactions: usize) {
 
     // Assert the response has the expected number of transactions
     assert_result(&result, min_transactions);
-    println!("Blocking {:?} test passed", network);
+    println!("Blocking {network:?} test passed");
 }
 
 #[cfg(feature = "async")]
@@ -698,7 +696,7 @@ async fn test_async(network: Network, min_transactions: usize) {
 
     // Assert the response has the expected number of transactions
     assert_result(&result, min_transactions);
-    println!("Async {:?} test passed", network);
+    println!("Async {network:?} test passed");
 }
 
 #[cfg(feature = "blocking-https")]
