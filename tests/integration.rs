@@ -7,6 +7,9 @@
 use waterfalls_client::Builder;
 
 #[cfg(any(feature = "blocking", feature = "async"))]
+use bitcoin::Network;
+
+#[cfg(any(feature = "blocking", feature = "async"))]
 async fn launch_test_env() -> waterfalls::test_env::TestEnv {
     let exe = std::env::var("BITCOIND_EXEC").expect("BITCOIND_EXEC must be set");
     waterfalls::test_env::launch(exe, waterfalls::be::Family::Bitcoin).await
@@ -617,5 +620,84 @@ async fn test_client_with_headers_async() {
     test_env.shutdown().await;
 }
 
-// Note: Elements testing removed as waterfalls 0.9.0 API doesn't support
-// family selection in the test environment setup
+//
+// Production Tests using real URLs and descriptors
+//
+
+#[cfg(any(feature = "blocking", feature = "async"))]
+fn get_production_url(network: Network) -> Option<&'static str> {
+    match network {
+        Network::Bitcoin => Some("https://waterfalls.liquidwebwallet.org/bitcoin/api"),
+        Network::Signet => Some("https://waterfalls.liquidwebwallet.org/bitcoinsignet/api"),
+        _ => None,
+    }
+}
+
+#[cfg(any(feature = "blocking", feature = "async"))]
+fn get_production_descriptor(network: Network) -> Option<&'static str> {
+    match network {
+        Network::Bitcoin => Some("sh(wpkh(xpub6C6nQwHaWbSrzs5tZ1q7m5R9cPK9eYpNMFesiXsYrgc1P8bvLLAet9JfHjYXKjToD8cBRswJXXbbFpXgwsswVPAZzKMa1jUp2kVkGVUaJa7/<0;1>/*))"),
+        Network::Signet => Some("tr(tpubDDh1wUM29wsoJnHomNYrEwhGainWHUSzErfNrsZKiCjQWWUjFLwhtAqWvGUKc4oESXqcGKdbPDv7fBDsPHPYitNuGNrJ9BKrW1GPxUyiUUb/<0;1>/*)"),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "blocking")]
+fn test_blocking(network: Network) {
+    let url = get_production_url(network).expect("URL not found for network");
+    let descriptor = get_production_descriptor(network).expect("Descriptor not found for network");
+
+    let builder = Builder::new(url);
+    let blocking_client = builder.build_blocking();
+
+    // Test waterfalls endpoint with production descriptor
+    let result = blocking_client.waterfalls(descriptor).unwrap();
+
+    // Basic assertions to verify the response is valid
+    assert!(result.tip.is_some());
+    println!("Blocking {:?} test passed - tip: {:?}", network, result.tip);
+}
+
+#[cfg(feature = "async")]
+async fn test_async(network: Network) {
+    let url = get_production_url(network).expect("URL not found for network");
+    let descriptor = get_production_descriptor(network).expect("Descriptor not found for network");
+
+    let builder = Builder::new(url);
+    let async_client = builder.build_async().unwrap();
+
+    // Test waterfalls endpoint with production descriptor
+    let result = async_client.waterfalls(descriptor).await.unwrap();
+
+    // Basic assertions to verify the response is valid
+    assert!(result.tip.is_some());
+    println!("Async {:?} test passed - tip: {:?}", network, result.tip);
+}
+
+#[cfg(feature = "blocking")]
+#[test]
+#[ignore]
+fn test_blocking_mainnet() {
+    test_blocking(Network::Bitcoin);
+}
+
+#[cfg(feature = "blocking")]
+#[test]
+#[ignore]
+fn test_blocking_signet() {
+    test_blocking(Network::Signet);
+}
+
+#[cfg(feature = "async")]
+#[tokio::test]
+#[ignore]
+async fn test_async_mainnet() {
+    test_async(Network::Bitcoin).await;
+}
+
+#[cfg(feature = "async")]
+#[tokio::test]
+#[ignore]
+async fn test_async_signet() {
+    test_async(Network::Signet).await;
+}
