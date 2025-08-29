@@ -45,9 +45,6 @@ waterfalls = { version = "0.9.4", default-features = false, features = [
     "test_env",
 ] }
 lazy_static = "1.4.0"
-tempfile = "3.0"
-env_logger = "0.11"
-elements = "0.24"
 
 [features]
 default = ["blocking", "async", "async-https", "tokio"]
