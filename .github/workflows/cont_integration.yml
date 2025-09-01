@@ -80,6 +80,8 @@ jobs:
       run: cargo test --features ${{ matrix.features }} --no-default-features
       env:
         BITCOIND_EXEC: ${{ github.workspace }}/bitcoin-28.0/bin/bitcoind
+    - name: Test ignored tests
+      run: cargo test --features ${{ matrix.features }} --no-default-features -- --ignored
 
   fmt:
     name: Rust Formatting
