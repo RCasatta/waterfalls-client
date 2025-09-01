@@ -77,7 +77,7 @@ jobs:
     - name: Build
       run: cargo build --features ${{ matrix.features }} --no-default-features
     - name: Test
-      run: cargo test --features ${{ matrix.features }} --no-default-features -- --test-threads=1
+      run: cargo test --features ${{ matrix.features }} --no-default-features
       env:
         BITCOIND_EXEC: ${{ github.workspace }}/bitcoin-28.0/bin/bitcoind
 
