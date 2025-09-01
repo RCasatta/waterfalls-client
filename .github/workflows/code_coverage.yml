@@ -37,8 +37,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Install grcov
         run: if [[ ! -e ~/.cargo/bin/grcov ]]; then cargo install grcov; fi
+      - name: Download bitcoind 28.0
+        run: curl -sSL https://bitcoincore.org/bin/bitcoin-core-28.0/bitcoin-28.0-x86_64-linux-gnu.tar.gz | tar -xz
       - name: Test
-        run: cargo test -- --test-threads=1
+        run: cargo test
+        env:
+          BITCOIND_EXEC: ${{ github.workspace }}/bitcoin-28.0/bin/bitcoind
       - name: Run grcov
         run: mkdir coverage; grcov . --binary-path ./target/debug/ -s . -t lcov --branch --ignore-not-existing --ignore '/*' -o ./coverage/lcov.info
       - name: Generate HTML coverage report
