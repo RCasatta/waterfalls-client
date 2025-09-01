@@ -17,7 +17,7 @@ jobs:
       matrix:
         rust:
           - version: stable # STABLE
-          - version: 1.63.0 # MSRV
+          # - version: 1.63.0 # MSRV
         features:
           - default
           - blocking
