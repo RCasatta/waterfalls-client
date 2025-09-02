@@ -312,7 +312,8 @@ fn test_waterfalls_endpoint_blocking() {
     let result_blocking = blocking_client.waterfalls(descriptor).unwrap();
 
     assert_eq!(result_blocking.page, 0);
-    assert!(result_blocking.tip.is_some());
+    assert!(result_blocking.tip.is_none());
+    assert!(result_blocking.tip_meta.is_some());
 
     rt.block_on(test_env.shutdown());
 }
@@ -333,7 +334,8 @@ async fn test_waterfalls_endpoint_async() {
     let result_async = async_client.waterfalls(descriptor).await.unwrap();
 
     assert_eq!(result_async.page, 0);
-    assert!(result_async.tip.is_some());
+    assert!(result_async.tip.is_none());
+    assert!(result_async.tip_meta.is_some());
 
     test_env.shutdown().await;
 }
@@ -643,7 +645,7 @@ fn get_production_descriptor(network: Network) -> Option<&'static str> {
 }
 
 #[cfg(any(feature = "blocking", feature = "async"))]
-fn assert_result(response: &WaterfallResponse, min_transactions: usize) {
+fn assert_result(response: &WaterfallResponse, min_txseens: usize) {
     // Count total transactions across all keys and nested vectors
     let total_transactions = response
         .txs_seen
@@ -653,22 +655,26 @@ fn assert_result(response: &WaterfallResponse, min_transactions: usize) {
         .sum::<usize>();
 
     // Assert we have a valid tip
-    assert!(response.tip.is_some(), "Response should have a tip");
+    assert!(
+        response.tip_meta.is_some(),
+        "Response should have a tip meta"
+    );
+    assert!(response.tip.is_none(), "Response should not have a tip");
 
     // Assert we have at least the minimum number of transactions
     assert!(
-        total_transactions >= min_transactions,
-        "Expected at least {min_transactions} transactions, but found {total_transactions}"
+        total_transactions >= min_txseens,
+        "Expected at least {min_txseens} transactions, but found {total_transactions}"
     );
 
     println!(
         "Found {} transactions (minimum expected: {}), tip: {:?}",
-        total_transactions, min_transactions, response.tip
+        total_transactions, min_txseens, response.tip
     );
 }
 
 #[cfg(feature = "blocking-https")]
-fn test_blocking(network: Network, min_transactions: usize) {
+fn test_blocking(network: Network, min_txseens: usize) {
     let url = get_production_url(network).expect("URL not found for network");
     let descriptor = get_production_descriptor(network).expect("Descriptor not found for network");
 
@@ -677,14 +683,15 @@ fn test_blocking(network: Network, min_transactions: usize) {
 
     // Test waterfalls endpoint with production descriptor
     let result = blocking_client.waterfalls(descriptor).unwrap();
+    println!("Blocking result: {:?}", result);
 
     // Assert the response has the expected number of transactions
-    assert_result(&result, min_transactions);
+    assert_result(&result, min_txseens);
     println!("Blocking {network:?} test passed");
 }
 
 #[cfg(feature = "async")]
-async fn test_async(network: Network, min_transactions: usize) {
+async fn test_async(network: Network, min_txseens: usize) {
     let url = get_production_url(network).expect("URL not found for network");
     let descriptor = get_production_descriptor(network).expect("Descriptor not found for network");
 
@@ -695,7 +702,7 @@ async fn test_async(network: Network, min_transactions: usize) {
     let result = async_client.waterfalls(descriptor).await.unwrap();
 
     // Assert the response has the expected number of transactions
-    assert_result(&result, min_transactions);
+    assert_result(&result, min_txseens);
     println!("Async {network:?} test passed");
 }
 

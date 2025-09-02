@@ -185,7 +185,7 @@ impl BlockingClient {
 
     /// Query the waterfalls endpoint with a descriptor
     pub fn waterfalls(&self, descriptor: &str) -> Result<WaterfallResponse, Error> {
-        let path = "/v2/waterfalls";
+        let path = "/v4/waterfalls";
         self.get_response_json_with_query(path, &[("descriptor", descriptor)])
     }
 
@@ -196,7 +196,7 @@ impl BlockingClient {
             .map(|a| a.to_string())
             .collect::<Vec<String>>()
             .join(",");
-        let path = "/v2/waterfalls";
+        let path = "/v4/waterfalls";
         self.get_response_json_with_query(path, &[("addresses", &addresses_str)])
     }
 

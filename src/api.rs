@@ -15,6 +15,21 @@ pub struct WaterfallResponse {
     pub page: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tip: Option<BlockHash>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tip_meta: Option<BlockMeta>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Ord, PartialOrd)]
+pub struct BlockMeta {
+    /// The block hash
+    pub b: BlockHash,
+
+    /// The block timestamp
+    pub t: u32,
+
+    /// The block height
+    pub h: u32,
 }
 
 /// A transaction seen in the blockchain for a specific script

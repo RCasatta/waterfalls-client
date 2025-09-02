@@ -2,9 +2,7 @@
 name = "waterfalls-client"
 version = "0.1.0"
 edition = "2021"
-authors = [
-    "Riccardo Casatta <riccardo@casatta.it>",
-]
+authors = ["Riccardo Casatta <riccardo@casatta.it>"]
 license = "MIT"
 homepage = "https://github.com/RCasatta/waterfalls-client"
 repository = "https://github.com/RCasatta/waterfalls-client"
@@ -40,7 +38,7 @@ tokio = { version = "1", features = ["time"], optional = true }
 [dev-dependencies]
 serde_json = "1.0"
 tokio = { version = "1.20.1", features = ["full"] }
-waterfalls = { version = "0.9.4", default-features = false, features = [
+waterfalls = { version = "0.9.6", default-features = false, features = [
     "test_env",
 ] }
 lazy_static = "1.4.0"

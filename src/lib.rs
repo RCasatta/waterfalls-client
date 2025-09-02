@@ -334,6 +334,7 @@ mod tests {
             txs_seen: BTreeMap::new(),
             page: 0,
             tip: None,
+            tip_meta: None,
         };
         assert!(empty_response.is_empty());
 
@@ -344,6 +345,7 @@ mod tests {
             txs_seen,
             page: 0,
             tip: None,
+            tip_meta: None,
         };
         assert!(empty_vectors_response.is_empty());
 
@@ -364,6 +366,7 @@ mod tests {
             txs_seen,
             page: 0,
             tip: None,
+            tip_meta: None,
         };
         assert!(!non_empty_response.is_empty());
     }
