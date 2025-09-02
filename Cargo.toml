@@ -1,9 +1,8 @@
 [package]
 name = "waterfalls-client"
-version = "0.12.1"
+version = "0.1.0"
 edition = "2021"
 authors = [
-    "Alekos Filini <alekos.filini@gmail.com>",
     "Riccardo Casatta <riccardo@casatta.it>",
 ]
 license = "MIT"
